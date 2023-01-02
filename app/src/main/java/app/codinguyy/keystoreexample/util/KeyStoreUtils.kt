@@ -2,16 +2,15 @@ package de.addmoremobile.lidlconnect.utils
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import java.io.InputStream
-import java.io.OutputStream
+import android.util.Base64
+import app.codinguyy.keystoreexample.util.SharedPreferences
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.IvParameterSpec
 
-class KeyStoreUtils {
-
+class KeyStoreUtils(val sharedPreferences: SharedPreferences) {
     companion object {
         private const val ALGORITHM = KeyProperties.KEY_ALGORITHM_AES
         private const val BLOCK_MODE = KeyProperties.BLOCK_MODE_CBC
@@ -51,32 +50,27 @@ class KeyStoreUtils {
         }
     }
 
-    fun encrypt(bytes: ByteArray, outputStream: OutputStream): ByteArray {
+    fun encrypt(bytes: ByteArray): ByteArray {
         val encryptBytes = encryptCipher.doFinal(bytes)
-
-        // save encryptedBytes in SharedPreferences
-
-        outputStream.use {
-            it.write(encryptCipher.iv.size)
-            it.write(encryptCipher.iv)
-            it.write(encryptBytes.size)
-            it.write(encryptBytes)
-        }
+        saveData(encryptBytes, encryptCipher.iv)
         return encryptBytes
     }
 
-    fun decrypt(inputStream: InputStream): ByteArray {
-        // get data from sharedpreferences
+    fun decrypt(): String {
+        val ivByteArray = Base64.decode(sharedPreferences.iv, Base64.DEFAULT)
+        val encryptedPassword = Base64.decode(sharedPreferences.password, Base64.DEFAULT)
 
-        return inputStream.use {
-            val ivSize = it.read()
-            val iv = ByteArray(ivSize)
-            it.read(iv)
+        val keystore = KeyStore.getInstance("AndroidKeyStore")
+        keystore.load(null)
+        val secretkey = keyStore.getKey("secret", null)
+        val cipher = getDecryptCipherForIv(ivByteArray)
+        cipher.init(Cipher.DECRYPT_MODE, secretkey, IvParameterSpec(ivByteArray))
+        val bytePassword = cipher.doFinal(encryptedPassword)
+        return bytePassword?.decodeToString() ?: ("")
+    }
 
-            val encryptedBytesSize = it.read()
-            val encryptedBytes = ByteArray(encryptedBytesSize)
-            it.read(encryptedBytes)
-            getDecryptCipherForIv(iv).doFinal(encryptedBytes)
-        }
+    private fun saveData(encryptedPassword: ByteArray, encryptionIv: ByteArray) {
+        sharedPreferences.password = Base64.encodeToString(encryptedPassword, Base64.DEFAULT)
+        sharedPreferences.iv = Base64.encodeToString(encryptionIv, Base64.DEFAULT)
     }
 }
